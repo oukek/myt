@@ -6,3 +6,4 @@ dist
 .env.test.local
 .env.production.local
 myt-python/build
+myt-node/python/log

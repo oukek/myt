@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "init": "cd myt-python && pip install -r requirements.txt",
+    "init:python": "cd myt-python && pip install -r requirements.txt",
     "build:python": "cd myt-python && python -m PyInstaller main.spec && python copy_to_node.py",
     "build:node": "cd myt-node && pnpm run build",
-    "build": "pnpm run build:python && pnpm run build:node"
+    "build": "pnpm run build:python && pnpm run build:node",
+    "test": "cd myt-node && pnpm test",
+    "publish:node" : "cd myt-node && pnpm publish"
   },
   "packageManager": "pnpm@8.15.0"
 } 

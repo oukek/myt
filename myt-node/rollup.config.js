@@ -25,7 +25,7 @@ export default [
       typescript({ tsconfig: './tsconfig.json' }),
       copy({
         targets: [
-          { src: 'src/python/**/*', dest: 'dist/python' }
+          { src: 'src/python', dest: 'dist' }
         ]
       })
     ],
