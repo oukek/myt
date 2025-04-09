@@ -7,4 +7,5 @@ dist
 .env.production.local
 myt-python/build
 myt-node/python/log
- myt-node/src/python/log
+myt-node/src/python/log
+myt-python/log

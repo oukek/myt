@@ -3,6 +3,7 @@ import commonjs from '@rollup/plugin-commonjs';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import dts from 'rollup-plugin-dts';
 import copy from 'rollup-plugin-copy';
+import json from '@rollup/plugin-json';
 
 export default [
   {
@@ -22,6 +23,7 @@ export default [
     plugins: [
       nodeResolve(),
       commonjs(),
+      json(),
       typescript({ tsconfig: './tsconfig.json' }),
       copy({
         targets: [

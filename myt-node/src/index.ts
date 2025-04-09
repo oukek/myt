@@ -1,4 +1,2 @@
-import { OukekMyt } from './myt-client';
-import { OukekMytServer } from './myt-server';
-
-export { OukekMyt, OukekMytServer }; 
+export { OukekMyt, OukekMytSocket, connectToSocket, disconnectFromSocket } from './myt-client';
+export { OukekMytServer } from './myt-server'; 

@@ -1,29 +1,42 @@
-import { OukekMyt } from '../index';
+import { OukekMyt, connectToSocket, disconnectFromSocket } from '../index';
 import * as fs from 'fs';
+
+// 设置更长的测试超时时间，避免异步操作未完成
+jest.setTimeout(30000);
 
 describe('OukekMyt SDK', () => {
   let sdk: OukekMyt;
 
-  beforeEach(async () => {
-    sdk = new OukekMyt();
-    await sdk.init("192.168.3.34", 11010, 10);
+  beforeAll(async () => {
+    // 在所有测试开始前连接到socket服务器
+    await connectToSocket();
+  });
+
+  afterAll(async () => {
+    // 在所有测试结束后断开连接
+    await disconnectFromSocket();
+    // 等待所有潜在的异步操作完成并确保资源正确释放
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    // 强制清理任何可能遗留的事件监听器或定时器
+    jest.clearAllTimers();
+    jest.clearAllMocks();
+  });
+
+  beforeEach(() => {
+    // 创建设备实例时直接传入设备信息
+    sdk = new OukekMyt("192.168.3.34", 11010, 10);
   });
 
   describe('设备连接相关', () => {
-    it('应该正确初始化设备连接', async () => {
-      const result = await sdk.init("192.168.3.34", 11010, 10);
-      expect(result).toBe(true);
+    it('应该检查连接状态', async () => {
+      const isConnected = await sdk.checkConnectState();
+      expect(typeof isConnected).toBe('boolean');
     });
 
     it('应该获取SDK版本', async () => {
       const version = await sdk.getSdkVersion();
       expect(typeof version).toBe('number');
       expect(version).toBeGreaterThan(0);
-    });
-
-    it('应该检查连接状态', async () => {
-      const isConnected = await sdk.checkConnectState();
-      expect(typeof isConnected).toBe('boolean');
     });
   });
 

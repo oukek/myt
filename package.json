@@ -11,4 +11,4 @@
     "publish:node" : "cd myt-node && pnpm publish"
   },
   "packageManager": "pnpm@8.15.0"
-} 
+}

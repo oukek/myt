@@ -10,29 +10,59 @@ npm install @oukek/myt
 
 ## 使用方法
 
-首先，导入并实例化 SDK：
+首先，导入SDK并初始化连接：
 
 ```typescript
-import { OukekMyt } from '@oukek/myt';
+import { OukekMyt, connectToSocket, disconnectFromSocket } from '@oukek/myt';
 
-const myt = new OukekMyt();
+// 首先建立与Python后端的连接
+await connectToSocket();
+
+// 创建设备实例
+const myt = new OukekMyt('192.168.1.100', 5555, 30000);
+
+// 使用设备
+const version = await myt.getSdkVersion();
+console.log('SDK版本:', version);
+
+// 在应用退出前断开连接
+await disconnectFromSocket();
 ```
 
-## 可用 API
+## 连接管理
+
+### 建立连接
+```typescript
+async connectToSocket(socketPort?: number): Promise<void>
+```
+连接到Python后端服务，可选择指定端口。
+
+### 断开连接
+```typescript
+async disconnectFromSocket(): Promise<void>
+```
+关闭与Python后端的连接，会自动关闭所有设备连接。
+
+## 设备操作
+
+创建设备实例时需要提供设备IP、端口和超时时间：
+```typescript
+const myt = new OukekMyt(deviceIp, devicePort, deviceTimeout);
+```
 
 ### 设备连接相关
 
-#### 初始化设备连接
+#### 关闭设备连接
 ```typescript
-async init(ip: string, port: number, timeout: number): Promise<boolean>
+async close(): Promise<boolean>
 ```
-初始化设备连接，设置 IP、端口和超时时间。
+关闭当前设备连接。
 
-#### 获取 SDK 版本
+#### 获取SDK版本
 ```typescript
 async getSdkVersion(): Promise<string>
 ```
-获取当前 SDK 的版本号。
+获取当前SDK的版本号。
 
 #### 检查连接状态
 ```typescript
@@ -42,11 +72,11 @@ async checkConnectState(): Promise<boolean>
 
 ### 工作模式设置
 
-#### 设置 RPA 工作模式
+#### 设置RPA工作模式
 ```typescript
 async setRpaWorkMode(mode: number): Promise<boolean>
 ```
-设置 RPA 工作模式。
+设置RPA工作模式。
 
 ### 截图相关
 
@@ -54,7 +84,7 @@ async setRpaWorkMode(mode: number): Promise<boolean>
 ```typescript
 async takeCaptrueCompress(type: 0 | 1 = 0, quality: number): Promise<string>
 ```
-进行压缩截图，type 为 0 表示 PNG 格式，1 表示 JPG 格式。
+进行压缩截图，type为0表示PNG格式，1表示JPG格式。
 
 #### 截图保存
 ```typescript
@@ -68,13 +98,25 @@ async screentshotEx(x1: number, y1: number, x2: number, y2: number, type: 0 | 1,
 ```
 对指定区域进行截图并保存。
 
+#### 区域压缩截图
+```typescript
+async takeCaptrueCompressEx(left: number, top: number, right: number, bottom: number, type: 0 | 1, quality: number): Promise<string>
+```
+对指定区域进行压缩截图。
+
 ### 节点操作
 
-#### 导出节点 XML
+#### 导出节点XML
 ```typescript
 async dumpNodeXml(includeInvisible: 0 | 1 = 1): Promise<string>
 ```
-导出节点 XML，可选择是否包含不可见节点。
+导出节点XML，可选择是否包含不可见节点。
+
+#### 扩展导出节点XML
+```typescript
+async dumpNodeXmlEx(workMode: number, timeout: number): Promise<string>
+```
+使用自定义工作模式和超时时间导出节点XML。
 
 #### 通过类名获取节点
 ```typescript
@@ -138,6 +180,18 @@ async touchUp(fingerId: number, x: number, y: number): Promise<boolean>
 ```
 在指定坐标抬起触摸。
 
+#### 点击触摸
+```typescript
+async touchClick(fingerId: number, x: number, y: number): Promise<boolean>
+```
+在指定坐标进行点击操作。
+
+#### 长按触摸
+```typescript
+async longClick(fingerId: number, x: number, y: number, duration: number): Promise<boolean>
+```
+在指定坐标进行长按操作。
+
 #### 滑动操作
 ```typescript
 async swipe(fingerId: number, x1: number, y1: number, x2: number, y2: number, duration: number): Promise<boolean>
@@ -151,6 +205,30 @@ async swipe(fingerId: number, x1: number, y1: number, x2: number, y2: number, du
 async keyPress(keycode: number): Promise<boolean>
 ```
 按下指定键码的按键。
+
+#### 返回键
+```typescript
+async pressBack(): Promise<boolean>
+```
+按下返回键。
+
+#### 确认键
+```typescript
+async pressEnter(): Promise<boolean>
+```
+按下确认键。
+
+#### 主页键
+```typescript
+async pressHome(): Promise<boolean>
+```
+按下主页键。
+
+#### 最近任务键
+```typescript
+async pressRecent(): Promise<boolean>
+```
+按下最近任务键。
 
 ### 节点查找方法
 
@@ -178,11 +256,11 @@ async getNodeByPkg(pkg: string): Promise<any>
 ```
 通过包名查找节点。
 
-#### 通过 ID 查找节点
+#### 通过ID查找节点
 ```typescript
 async getNodeById(id: string): Promise<any>
 ```
-通过 ID 查找节点。
+通过ID查找节点。
 
 #### 通过描述查找节点
 ```typescript
@@ -210,26 +288,41 @@ async clickClass(className: string): Promise<boolean>
 ```
 点击指定类名的元素。
 
-#### 点击 ID
+#### 点击ID
 ```typescript
 async clickId(id: string): Promise<boolean>
 ```
-点击指定 ID 的元素。
+点击指定ID的元素。
+
+#### 点击描述
+```typescript
+async clickDesc(desc: string): Promise<boolean>
+```
+点击指定描述的元素。
+
+### 其他功能
+
+#### 获取显示旋转
+```typescript
+async getDisplayRotate(): Promise<number>
+```
+获取屏幕旋转状态。
 
 ## 错误处理
 
-SDK 在以下情况下可能会抛出错误：
+SDK在以下情况下可能会抛出错误：
 - 设备未初始化
-- 操作超时（30秒）
-- Python 进程失败
+- 操作超时 
+- Python进程失败
 - 无效的结果类型
-- JSON 解析错误
+- JSON解析错误
 
 所有错误都会被包装在描述性消息中，指示失败的操作。
 
 ## 注意事项
 
-- SDK 使用 Python 后端进程执行操作
-- 操作有 30 秒的超时限制
-- 使用前必须先调用 init 方法初始化设备连接
-- 所有方法都是异步的，需要使用 async/await 或 Promise 处理 
+- SDK使用Python后端进程执行操作
+- 使用前必须先调用connectToSocket建立Python后端连接
+- 设备初始化是自动的，无需显式调用init方法
+- 所有设备方法都是异步的，需要使用async/await或Promise处理
+- 在应用退出前请调用disconnectFromSocket关闭连接 
