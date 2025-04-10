@@ -570,6 +570,464 @@ export class OukekMyt {
     await this.ensureInitialized();
     return this.socketManager.sendRequest('takeCaptrueCompressEx', [this.deviceIp, left, top, right, bottom, type, quality]);
   }
+
+  /**
+   * 随机延迟函数
+   * @param {number} min - 最小延迟
+   * @param {number} max - 最大延迟
+   * @returns {number} - 随机延迟时间
+   */
+  private randomDelay(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  }
+
+  /**
+   * 生成基于时间的点延迟数组
+   * @param {number} numPoints - 点的数量
+   * @param {number} totalDuration - 总持续时间
+   * @param {boolean} isSlowSwipe - 是否慢速滑动
+   * @param {boolean} isQuickSwipe - 是否快速滑动
+   * @returns {Array<number>} - 每个点的延迟时间
+   */
+  private calculatePointDelays(numPoints: number, totalDuration: number, isSlowSwipe: boolean, isQuickSwipe: boolean): number[] {
+    const delays: number[] = [];
+    let remainingTime = totalDuration;
+    
+    // 预留一部分时间用于首尾的特殊处理
+    const reservedTime = Math.min(totalDuration * 0.2, 100);
+    let mainDuration = totalDuration - reservedTime;
+    
+    // 根据滑动类型调整时间分配比例
+    let accelPhase, decelPhase, steadyPhase;
+    
+    if (isSlowSwipe) {
+      // 慢滑动 - 更均匀的时间分配
+      accelPhase = 0.15;   // 加速阶段比例
+      decelPhase = 0.15;   // 减速阶段比例
+      steadyPhase = 0.7;   // 匀速阶段比例
+    } else if (isQuickSwipe) {
+      // 快滑动 - 更短的加速，更长的减速
+      accelPhase = 0.1;    // 加速阶段比例 
+      decelPhase = 0.3;    // 减速阶段比例
+      steadyPhase = 0.6;   // 匀速阶段比例
+    } else {
+      // 中等速度 - 标准分配
+      accelPhase = 0.2;    // 加速阶段比例
+      decelPhase = 0.2;    // 减速阶段比例
+      steadyPhase = 0.6;   // 匀速阶段比例
+    }
+    
+    // 每个阶段的点数
+    const accelPoints = Math.floor(numPoints * accelPhase);
+    const decelPoints = Math.floor(numPoints * decelPhase);
+    const steadyPoints = numPoints - accelPoints - decelPoints;
+    
+    // 生成每个阶段的延迟时间
+    const baseDelay = mainDuration / (
+      accelPoints * (isSlowSwipe ? 1.1 : 1.3) +     // 慢滑动时加速更均匀
+      steadyPoints * (isSlowSwipe ? 0.9 : 0.7) +    // 慢滑动时匀速更平稳
+      decelPoints * (isQuickSwipe ? 1.5 : 1.3)      // 快滑动时减速更明显
+    );
+    
+    // 加速阶段 - 延迟从长到短
+    for (let i = 0; i < accelPoints; i++) {
+      const progress = i / accelPoints;
+      const factor = isSlowSwipe ? 
+        (1.1 - 0.2 * progress) :        // 慢滑动时加速较均匀
+        (1.3 - 0.6 * progress);         // 快/中滑动时加速较明显
+      
+      // 慢滑动时抖动较小
+      const jitter = (Math.random() * (isSlowSwipe ? 0.1 : 0.15) - (isSlowSwipe ? 0.05 : 0.075));
+      
+      const delay = Math.max(10, Math.min(150, Math.floor(baseDelay * factor * (1 + jitter))));
+      delays.push(delay);
+      remainingTime -= delay;
+    }
+    
+    // 稳定阶段 - 基本稳定的延迟但有随机波动
+    for (let i = 0; i < steadyPoints; i++) {
+      // 慢滑动时波动较小，保持稳定速率
+      const jitter = (Math.random() * (isSlowSwipe ? 0.15 : 0.25) - (isSlowSwipe ? 0.075 : 0.125));
+      const steadyFactor = isSlowSwipe ? 0.9 : 0.7;
+      const delay = Math.max(10, Math.min(150, Math.floor(baseDelay * steadyFactor * (1 + jitter))));
+      delays.push(delay);
+      remainingTime -= delay;
+    }
+    
+    // 减速阶段 - 延迟从短到长
+    for (let i = 0; i < decelPoints; i++) {
+      const progress = i / decelPoints;
+      const decelStart = isSlowSwipe ? 0.9 : 0.7;
+      const decelEnd = isQuickSwipe ? 1.5 : 1.3;
+      const factor = decelStart + (decelEnd - decelStart) * progress;
+      
+      // 慢滑动时抖动较小
+      const jitter = (Math.random() * (isSlowSwipe ? 0.1 : 0.15) - (isSlowSwipe ? 0.05 : 0.075));
+      
+      // 确保不会超出剩余时间
+      if (i === decelPoints - 1 && delays.length === numPoints - 1) {
+        delays.push(Math.max(10, remainingTime));
+        break;
+      }
+      
+      const delay = Math.max(10, Math.min(150, Math.floor(baseDelay * factor * (1 + jitter))));
+      delays.push(delay);
+      remainingTime -= delay;
+    }
+    
+    // 确保总时间接近指定时间
+    if (delays.length < numPoints) {
+      const remaining = numPoints - delays.length;
+      for (let i = 0; i < remaining; i++) {
+        delays.push(Math.max(10, Math.floor(remainingTime / remaining)));
+      }
+    }
+    
+    return delays;
+  }
+
+  /**
+   * 生成逼真的人类滑动轨迹
+   */
+  private generateRealisticTrajectory(
+    startX: number, 
+    startY: number, 
+    endX: number, 
+    endY: number, 
+    numPoints: number, 
+    isVertical: boolean, 
+    options: {
+      noiseIntensity: number;
+      isSlowSwipe: boolean;
+      isQuickSwipe: boolean;
+      isHorizontal: boolean;
+      isVertical: boolean;
+    }
+  ): Array<{x: number, y: number}> {
+    const { 
+      noiseIntensity, 
+      isSlowSwipe, 
+      isQuickSwipe, 
+      isHorizontal,
+      isVertical: isVertSwipe
+    } = options;
+    
+    const points: Array<{x: number, y: number}> = [];
+    
+    // 总距离
+    const totalDistanceX = endX - startX;
+    const totalDistanceY = endY - startY;
+    
+    // 计算滑动方向向量（单位向量）
+    const distance = Math.sqrt(totalDistanceX * totalDistanceX + totalDistanceY * totalDistanceY);
+    const directionX = totalDistanceX / distance;
+    const directionY = totalDistanceY / distance;
+    
+    // 垂直于滑动方向的向量（用于添加偏移）
+    const perpX = -directionY;
+    const perpY = directionX;
+    
+    // 添加起始点
+    points.push({ x: startX, y: startY });
+    
+    // 累计偏差 - 用于平滑随机扰动
+    let cumulativeOffset = 0;
+    
+    // 生成中间点
+    for (let i = 1; i < numPoints; i++) {
+      const progress = i / numPoints;
+      
+      // 根据滑动类型和进度调整噪声强度
+      let effectiveNoiseIntensity = noiseIntensity;
+      
+      if (isSlowSwipe) {
+        // 慢滑动 - 全程低噪声保持平滑
+        effectiveNoiseIntensity *= 0.5;
+      } else if (isQuickSwipe) {
+        // 快滑动 - 前半段更平滑，后半段噪声增加
+        if (progress < 0.5) {
+          effectiveNoiseIntensity *= 0.3 + progress * 0.4; // 0.3 到 0.5 (降低噪声增长)
+        } else {
+          effectiveNoiseIntensity *= 0.5 + (progress - 0.5) * 0.5; // 0.5 到 0.75 (降低最大噪声)
+        }
+      } else {
+        // 中等速度 - 中间段噪声最大
+        effectiveNoiseIntensity *= 0.3 + 0.8 * progress * (1 - progress); // 中间达到峰值，但峰值更低
+      }
+      
+      // 靠近终点时减少噪声，避免急转弯
+      if (progress > 0.8) {
+        effectiveNoiseIntensity *= (1 - (progress - 0.8) / 0.2);
+      }
+      
+      // 使用缓动函数模拟加速和减速
+      let easedProgress;
+      
+      if (progress < 0.3) {
+        // 加速阶段 - ease-in
+        const p = progress / 0.3;
+        easedProgress = 0.3 * p * p;
+      } else if (progress > 0.7) {
+        // 减速阶段 - ease-out
+        const p = (progress - 0.7) / 0.3;
+        easedProgress = 0.7 + 0.3 * (1 - Math.pow(1 - p, 2));
+      } else {
+        // 匀速阶段 - 线性
+        easedProgress = progress;
+      }
+      
+      // 主方向位移
+      const baseX = startX + totalDistanceX * easedProgress;
+      const baseY = startY + totalDistanceY * easedProgress;
+      
+      // 噪声系数 - 确保噪声强度在中间达到最大，两端较小
+      const noiseFactor = Math.sin(progress * Math.PI) * effectiveNoiseIntensity;
+      
+      // 为水平和垂直滑动提供更专注的路径生成
+      let finalX, finalY;
+      
+      if (isHorizontal) {
+        // 水平滑动 - 几乎没有Y偏移，只有前进方向(X轴)的速度变化
+        // 保持滑动方向一致性的同时添加速度变化
+        
+        // 计算自然滑动轨迹上的目标点 - 在水平线上前进，几乎无Y变化
+        const targetY = startY + (endY - startY) * easedProgress; // 确保Y值平滑过渡
+        
+        // 最小化Y偏移，使用极小的扰动值
+        const maxYDeviation = 1.5; // 极小的Y轴偏移（几乎察觉不到）
+        
+        // 使用正弦扰动使Y轴偏移更自然，不会出现明显的上下抖动
+        const smoothProgress = (Math.sin((progress * Math.PI * 2) - Math.PI/2) + 1) / 2; // 0-1平滑曲线
+        const yDeviation = maxYDeviation * smoothProgress * noiseFactor;
+        
+        finalY = targetY + yDeviation;
+        
+        // X轴以主要方向为基准，添加速度变化但不改变方向
+        const xSpeedVariation = noiseFactor * 5; // 仅影响速度，不影响方向
+        finalX = baseX + xSpeedVariation * directionX;
+        
+      } else if (isVertSwipe) {
+        // 垂直滑动 - 几乎没有X偏移，只有前进方向(Y轴)的速度变化
+        
+        // 计算自然滑动轨迹上的目标点 - 在垂直线上前进，几乎无X变化
+        const targetX = startX + (endX - startX) * easedProgress; // 确保X值平滑过渡
+        
+        // 最小化X偏移，使用极小的扰动值
+        const maxXDeviation = 1.5; // 极小的X轴偏移（几乎察觉不到）
+        
+        // 使用正弦扰动使X轴偏移更自然，不会出现明显的左右抖动
+        const smoothProgress = (Math.sin((progress * Math.PI * 2) - Math.PI/2) + 1) / 2; // 0-1平滑曲线
+        const xDeviation = maxXDeviation * smoothProgress * noiseFactor;
+        
+        finalX = targetX + xDeviation;
+        
+        // Y轴以主要方向为基准，添加速度变化但不改变方向
+        const ySpeedVariation = noiseFactor * 5; // 仅影响速度，不影响方向
+        finalY = baseY + ySpeedVariation * directionY;
+        
+      } else {
+        // 斜向滑动 - 使用传统方法，但减小偏移
+        // 计算新的随机偏移 (最大偏移从15降到10)
+        const newOffset = (Math.random() * 2 - 1) * noiseFactor * 10; // 减小偏移量
+        
+        // 平滑噪声 - 避免突变
+        const smoothingFactor = isSlowSwipe ? 0.85 : 0.75; // 提高平滑系数，减少抖动
+        cumulativeOffset = cumulativeOffset * smoothingFactor + newOffset * (1 - smoothingFactor);
+        
+        // 减少路径末端的偏移，确保平滑接近终点
+        let adjustedOffset = cumulativeOffset;
+        if (progress > 0.7) {
+          // 在最后30%的路径上逐渐减少偏移，确保平滑到达终点
+          adjustedOffset *= (1 - (progress - 0.7) / 0.3);
+        }
+        
+        // 计算正交偏移，但降低总体偏移幅度，使滑动更自然
+        finalX = baseX + perpX * adjustedOffset * 0.7; // 降低偏移幅度
+        finalY = baseY + perpY * adjustedOffset * 0.7; // 降低偏移幅度
+      }
+      
+      points.push({ x: finalX, y: finalY });
+    }
+    
+    // 添加结束点
+    points.push({ x: endX, y: endY });
+    
+    return points;
+  }
+
+  /**
+   * 模拟人类滑动
+   * @param {number} fingerId - 触控手指ID
+   * @param {number} startX - 起始X坐标
+   * @param {number} startY - 起始Y坐标
+   * @param {number} endX - 结束X坐标
+   * @param {number} endY - 结束Y坐标
+   * @param {number} duration - 滑动持续时间(毫秒)
+   * @param {Object} options - 可选配置参数
+   * @returns {Promise<void>}
+   */
+  public async simulateHumanSwipe(
+    fingerId: number, 
+    startX: number, 
+    startY: number, 
+    endX: number, 
+    endY: number, 
+    duration: number = 500, 
+    options: {
+      screenWidth?: number, 
+      screenHeight?: number,
+      startOffsetRange?: { min: number, max: number },
+      endOffsetRange?: { min: number, max: number },
+      noiseIntensity?: number
+    } = {}
+  ): Promise<void> {
+    await this.ensureInitialized();
+    
+    // 参数校验
+    if (typeof startX !== 'number' || typeof startY !== 'number' || 
+        typeof endX !== 'number' || typeof endY !== 'number' || 
+        duration < 0 || typeof fingerId !== 'number') {
+      throw new Error('输入参数无效');
+    }
+    
+    // 提取选项或使用默认值
+    const {
+      screenWidth = 1080, 
+      screenHeight = 2340,
+      startOffsetRange = { min: -8, max: 8 },  // 进一步减小默认偏移范围
+      endOffsetRange = { min: -8, max: 8 },    // 进一步减小默认偏移范围
+      noiseIntensity = 0.2    // 降低噪声强度，防止过度抖动
+    } = options;
+    
+    // 检测滑动类型
+    const isHorizontal = Math.abs(endY - startY) < Math.abs(endX - startX) * 0.2;
+    const isVertical = Math.abs(endX - startX) < Math.abs(endY - startY) * 0.2;
+    
+    // 根据滑动类型调整偏移
+    let startXOffset = 0, startYOffset = 0, endXOffset = 0, endYOffset = 0;
+    
+    if (isHorizontal) {
+      // 水平滑动：Y轴偏移极小或无
+      startXOffset = this.randomDelay(startOffsetRange.min, startOffsetRange.max);
+      startYOffset = this.randomDelay(-2, 2); // 几乎没有Y轴偏移
+      endXOffset = this.randomDelay(endOffsetRange.min, endOffsetRange.max);
+      endYOffset = this.randomDelay(-2, 2); // 几乎没有Y轴偏移
+    } else if (isVertical) {
+      // 垂直滑动：X轴偏移极小或无
+      startXOffset = this.randomDelay(-2, 2); // 几乎没有X轴偏移
+      startYOffset = this.randomDelay(startOffsetRange.min, startOffsetRange.max);
+      endXOffset = this.randomDelay(-2, 2); // 几乎没有X轴偏移
+      endYOffset = this.randomDelay(endOffsetRange.min, endOffsetRange.max);
+    } else {
+      // 斜向滑动：两轴都有适度偏移
+      startXOffset = this.randomDelay(startOffsetRange.min, startOffsetRange.max);
+      startYOffset = this.randomDelay(startOffsetRange.min, startOffsetRange.max);
+      endXOffset = this.randomDelay(endOffsetRange.min, endOffsetRange.max);
+      endYOffset = this.randomDelay(endOffsetRange.min, endOffsetRange.max);
+    }
+    
+    const startXWithOffset = startX + startXOffset;
+    const startYWithOffset = startY + startYOffset;
+    const endXWithOffset = endX + endXOffset;
+    const endYWithOffset = endY + endYOffset;
+    
+    // 决定滑动方向
+    const isMainlyVertical = Math.abs(endYWithOffset - startYWithOffset) > Math.abs(endXWithOffset - startXWithOffset);
+    
+    // 基于距离和时间计算适当的点数量
+    const distance = Math.sqrt(
+      Math.pow(endXWithOffset - startXWithOffset, 2) + 
+      Math.pow(endYWithOffset - startYWithOffset, 2)
+    );
+    
+    // 判断滑动速度类型
+    const isSlowSwipe = duration > 800;
+    const isQuickSwipe = duration < 300;
+    
+    // 根据速度类型调整点的数量和噪声强度
+    let actualNoiseIntensity = noiseIntensity;
+    let minPointCount = 5;
+    
+    if (isSlowSwipe) {
+      // 慢滑动 - 更多点，更小的噪声
+      minPointCount = 15;
+      actualNoiseIntensity = noiseIntensity * 0.5; // 降低噪声强度，使轨迹更平滑
+    } else if (isQuickSwipe) {
+      // 快滑动 - 较少点，噪声集中在后半段
+      minPointCount = 5;
+    } else {
+      // 中等速度
+      minPointCount = 8;
+    }
+    
+    // 为水平或垂直滑动减少噪声强度
+    if (isHorizontal || isVertical) {
+      actualNoiseIntensity *= 0.4; // 大幅减少噪声，保持直线特性
+    }
+    
+    const pointsBasedOnDistance = Math.max(minPointCount, Math.floor(distance / 20));
+    const pointsBasedOnDuration = Math.max(minPointCount, Math.floor(duration / 50));
+    const numPoints = Math.max(pointsBasedOnDistance, pointsBasedOnDuration);
+    
+    // 生成更真实的人类滑动轨迹
+    const points = this.generateRealisticTrajectory(
+      startXWithOffset, startYWithOffset,
+      endXWithOffset, endYWithOffset,
+      numPoints, isMainlyVertical, {
+        noiseIntensity: actualNoiseIntensity,
+        isSlowSwipe,
+        isQuickSwipe,
+        isHorizontal,
+        isVertical
+      }
+    );
+    
+    // 使用缓动函数计算每个点的时间分布
+    const pointDelays = this.calculatePointDelays(numPoints, duration, isSlowSwipe, isQuickSwipe);
+    
+    // 开始滑动
+    console.log(`模拟人类滑动: 从(${startXWithOffset},${startYWithOffset})到(${endXWithOffset},${endYWithOffset})`);
+    
+    try {
+      // 按下手指
+      await this.touchDown(fingerId, startXWithOffset, startYWithOffset);
+      await new Promise(resolve => setTimeout(resolve, this.randomDelay(30, 70)));
+      
+      // 滑动过程
+      for (let i = 0; i < points.length; i++) {
+        const { x, y } = points[i];
+        
+        // 限制坐标在屏幕范围内
+        const safeX = Math.max(0, Math.min(screenWidth, Math.round(x)));
+        const safeY = Math.max(0, Math.min(screenHeight, Math.round(y)));
+        
+        // 执行移动
+        await this.touchMove(fingerId, safeX, safeY);
+        
+        // 应用延迟
+        await new Promise(resolve => setTimeout(resolve, pointDelays[i]));
+      }
+      
+      // 确保最后一点是目标位置（可能有微小偏差）
+      const finalX = Math.max(0, Math.min(screenWidth, Math.round(endXWithOffset)));
+      const finalY = Math.max(0, Math.min(screenHeight, Math.round(endYWithOffset)));
+      
+      await this.touchMove(fingerId, finalX, finalY);
+      await new Promise(resolve => setTimeout(resolve, this.randomDelay(30, 70)));
+      
+      // 抬起手指
+      await this.touchUp(fingerId, finalX, finalY);
+    } catch (error) {
+      console.error('滑动操作异常:', error);
+      // 确保手指抬起，避免触摸状态卡死
+      try {
+        await this.touchUp(fingerId, endXWithOffset, endYWithOffset);
+      } catch (e) {
+        console.error('尝试抬起手指失败:', e);
+      }
+      throw error;
+    }
+  }
 }
 
 // 修改connectToSocket函数
